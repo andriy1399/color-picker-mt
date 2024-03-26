@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { findColorPositionOnCanvas } from '../helpers/findColorPositionOnCanvas';
 import Pin from '../elements/Pin';
 import { drawHueSaturationCanvas, drawHueSlider } from '../helpers/drawHue';
+import useDraggablePins from '../hooks/useDraggablePins';
 
 const PixelColorPicker: React.FC = () => {
+	const { pins, addPin, updatePinPosition, startDragging, stopDragging } = useDraggablePins();
 	const [color, setColor] = useState<string>('#000000');
 	const [rgbInput, setRgbInput] = useState<string>(color);
 	const [pinPosition, setPinPosition] = useState<{ x: number; y: number } | null>(null);
@@ -28,31 +30,74 @@ const PixelColorPicker: React.FC = () => {
 		setIsDragging(false);
 	}, []);
 
-	const onDrag = useCallback(
-		(event: MouseEvent) => {
-			if (isDragging && canvasRef.current) {
-				const rect = canvasRef.current.getBoundingClientRect();
-				const x = event.clientX - rect.left;
-				const y = event.clientY - rect.top;
-				if (x >= 0 && y >= 0 && x <= canvasRef.current.width && y <= canvasRef.current.height) {
-					setColor(getColorFromCanvas(x, y));
-					setPinPosition({ x, y });
-				}
-			}
-		},
-		[isDragging, getColorFromCanvas]
-	);
+	// const onDrag = useCallback(
+	// 	(event: MouseEvent) => {
+	// 		if (isDragging && canvasRef.current) {
+	// 			const rect = canvasRef.current.getBoundingClientRect();
+	// 			const x = event.clientX - rect.left;
+	// 			const y = event.clientY - rect.top;
+	// 			if (x >= 0 && y >= 0 && x <= canvasRef.current.width && y <= canvasRef.current.height) {
+	// 				setColor(getColorFromCanvas(x, y));
+	// 				setPinPosition({ x, y });
+	// 			}
+	// 		}
+	// 	},
+	// 	[isDragging, getColorFromCanvas]
+	// );
 
 	const pickColor = useCallback(
 		(event: React.MouseEvent<HTMLCanvasElement>) => {
 			const rect = event.currentTarget.getBoundingClientRect();
 			const x = event.clientX - rect.left;
 			const y = event.clientY - rect.top;
+			const c = getColorFromCanvas(x, y);
+			addPin(c, x, y);
 			setColor(getColorFromCanvas(x, y));
 			setPinPosition({ x, y });
 		},
-		[getColorFromCanvas]
+		[getColorFromCanvas, addPin]
 	);
+
+	useEffect(() => {
+		const handleMouseMove = (event: MouseEvent) => {
+			if (canvasRef.current) {
+				const canvasRect = canvasRef.current.getBoundingClientRect();
+				const x = event.clientX - canvasRect.left;
+				const y = event.clientY - canvasRect.top;
+				if (x >= 0 && y >= 0 && x <= canvasRef.current.width && y <= canvasRef.current.height) {
+					pins.forEach((pin, index) => {
+						if (pin.isDragging) {
+							updatePinPosition(index, x, y, canvasRect, getColorFromCanvas(x, y));
+						}
+					});
+				}
+			}
+		};
+
+		if (pins.some((pin) => pin.isDragging)) {
+			window.addEventListener('mousemove', handleMouseMove);
+		}
+
+		return () => {
+			window.removeEventListener('mousemove', handleMouseMove);
+		};
+	}, [getColorFromCanvas, pins, updatePinPosition]);
+
+	useEffect(() => {
+		const handleMouseUp = () => {
+			stopDragging();
+		};
+
+		window.addEventListener('mouseup', handleMouseUp);
+
+		return () => {
+			window.removeEventListener('mouseup', handleMouseUp);
+		};
+	}, [stopDragging]);
+
+	const onPinMouseDown = (index: number) => {
+		startDragging(index);
+	};
 
 	const startDrag = useCallback(() => {
 		setIsDragging(true);
@@ -92,12 +137,10 @@ const PixelColorPicker: React.FC = () => {
 		const x = event.clientX - rect.left;
 		const width = canvas.width;
 		console.log(rect);
-		// Calculate the hue based on the click position.
 		const hueValue = (x / width) * 360;
 		setHuePinPosition({ x, y: rect.height / 2 });
-		// Now, hue has been selected and you can use it to update your main color picker canvas
 		setHue(hueValue);
-		drawHueSaturationCanvas(canvasRef.current, hueValue); // Call this function with the new hue to update the color picker
+		drawHueSaturationCanvas(canvasRef.current, hueValue);
 	};
 
 	useEffect(() => {
@@ -115,17 +158,17 @@ const PixelColorPicker: React.FC = () => {
 		}
 	}, []);
 
-	useEffect(() => {
-		if (isDragging) {
-			window.addEventListener('mousemove', onDrag);
-			window.addEventListener('mouseup', endDrag);
-		}
+	// useEffect(() => {
+	// 	if (isDragging) {
+	// 		window.addEventListener('mousemove', onDrag);
+	// 		window.addEventListener('mouseup', endDrag);
+	// 	}
 
-		return () => {
-			window.removeEventListener('mousemove', onDrag);
-			window.removeEventListener('mouseup', endDrag);
-		};
-	}, [isDragging, onDrag, endDrag]);
+	// 	return () => {
+	// 		window.removeEventListener('mousemove', onDrag);
+	// 		window.removeEventListener('mouseup', endDrag);
+	// 	};
+	// }, [isDragging, onDrag, endDrag]);
 
 	return (
 		<div ref={containerRef} style={{ position: 'relative' }}>
@@ -144,11 +187,16 @@ const PixelColorPicker: React.FC = () => {
 					{huePinPosition && <Pin startDrag={startDrag} x={huePinPosition.x} y={huePinPosition.y} />}
 				</div>
 			</div>
-			{pinPosition && <Pin startDrag={startDrag} x={pinPosition.x} y={pinPosition.y} />}
-			<div style={{ display: 'flex', gap: '20px' }}>
-				<div style={{ background: color, height: '50px', width: '50px' }}></div>
-				<p>{color}</p>
-			</div>
+			{pins.map((pin, index) => (
+				<Pin key={index} startDrag={() => onPinMouseDown(index)} x={pin.position.x} y={pin.position.y} />
+			))}
+
+			{pins.map((p) => (
+				<div style={{ display: 'flex', gap: '20px' }}>
+					<div style={{ background: p.color, height: '50px', width: '50px' }}></div>
+					<p>{p.color}</p>
+				</div>
+			))}
 
 			<input
 				type="text"
