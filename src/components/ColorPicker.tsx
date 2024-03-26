@@ -12,10 +12,11 @@ const PixelColorPicker: React.FC = () => {
 	const hueCanvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [isDragging, setIsDragging] = useState<boolean>(false);
+	const [huePinPosition, setHuePinPosition] = useState<{ x: number; y: number } | null>(null);
 
 	const getColorFromCanvas = useCallback((x: number, y: number) => {
 		const canvas = canvasRef.current;
-		const ctx = canvas?.getContext('2d');
+		const ctx = canvas?.getContext('2d', { willReadFrequently: true });
 		if (ctx) {
 			const imageData = ctx.getImageData(x, y, 1, 1).data;
 			return `rgb(${imageData[0]}, ${imageData[1]}, ${imageData[2]})`;
@@ -72,7 +73,7 @@ const PixelColorPicker: React.FC = () => {
 			setColor(newColor);
 
 			const canvas = canvasRef.current;
-			const ctx = canvas?.getContext('2d');
+			const ctx = canvas?.getContext('2d', { willReadFrequently: true });
 			if (ctx && canvas) {
 				const position = findColorPositionOnCanvas(ctx, canvas, newColor);
 				if (position) {
@@ -84,16 +85,16 @@ const PixelColorPicker: React.FC = () => {
 
 	const handleHueSliderClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
 		const canvas = event.currentTarget;
-		const ctx = canvas.getContext('2d');
+		const ctx = canvas.getContext('2d', { willReadFrequently: true });
 		if (!ctx) return;
 
 		const rect = canvas.getBoundingClientRect();
 		const x = event.clientX - rect.left;
 		const width = canvas.width;
-
+		console.log(rect);
 		// Calculate the hue based on the click position.
 		const hueValue = (x / width) * 360;
-
+		setHuePinPosition({ x, y: rect.height / 2 });
 		// Now, hue has been selected and you can use it to update your main color picker canvas
 		setHue(hueValue);
 		drawHueSaturationCanvas(canvasRef.current, hueValue); // Call this function with the new hue to update the color picker
@@ -138,7 +139,10 @@ const PixelColorPicker: React.FC = () => {
 				}}
 			>
 				<canvas width="600" height="500" ref={canvasRef} onClick={onCanvasClick} />
-				<canvas ref={hueCanvasRef} height="30" width="600" onClick={handleHueSliderClick} />
+				<div style={{ position: 'relative' }}>
+					<canvas ref={hueCanvasRef} height="30" width="600" onClick={handleHueSliderClick} />
+					{huePinPosition && <Pin startDrag={startDrag} x={huePinPosition.x} y={huePinPosition.y} />}
+				</div>
 			</div>
 			{pinPosition && <Pin startDrag={startDrag} x={pinPosition.x} y={pinPosition.y} />}
 			<div style={{ display: 'flex', gap: '20px' }}>
